@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <script src="/bower_components/webcomponentsjs/webcomponents.min.js"></script>
+
+    <link rel="import" href="/bower_components/polymer/polymer.html">
+
+    <link rel="import" href="/bower_components/core-scaffold/core-scaffold.html">
+    <link rel="import" href="/bower_components/core-header-panel/core-header-panel.html">
+    <link rel="import" href="/bower_components/core-scroll-header-panel/core-scroll-header-panel.html">
+    <link rel="import" href="/bower_components/core-toolbar/core-toolbar.html">
+    <link rel="import" href="/bower_components/core-pages/core-pages.html">
+    <link rel="import" href="/bower_components/core-item/core-item.html">
+    <link rel="import" href="/bower_components/core-icon-button/core-icon-button.html">
+    <link rel="import" href="/bower_components/core-icons/core-icons.html">
+    <link rel="import" href="/bower_components/core-icons/communication-icons.html">
+    <link rel="import" href="/bower_components/core-icons/social-icons.html">
+
+    <link rel="import" href="/bower_components/paper-toast/paper-toast.html"/>
+    <link rel="import" href="/bower_components/paper-button/paper-button.html"/>
+    <link rel="import" href="/bower_components/paper-input/paper-input.html"/>
+    <link rel="import" href="/bower_components/paper-item/paper-item.html"/>
+    <link rel="import" href="/bower_components/paper-dialog/paper-dialog.html"/>
+    <link rel="import" href="/bower_components/paper-fab/paper-fab.html"/>
+    <link rel="import" href="/bower_components/paper-icon-button/paper-icon-button.html"/>
+    <link rel="import" href="/bower_components/paper-shadow/paper-shadow.html"/>
+
+    <script src="/loader.js"></script>
+    <script src="/gwt/Chat/Chat.nocache.js"></script>
+
+    <style shim-shadowdom>
+        html, body {
+            background-color: #d2ecfb;
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            font-family: sans-serif;
+        }
+
+        chat-app /deep/ .padded {
+            padding: 0.5em;
+        }
+
+        chat-app /deep/ core-icon {
+            margin-right: 0.5em;
+        }
+
+        chat-app /deep/ .channelItem {
+            line-height: 1.2em;
+            margin: 0.25em 0.5em 0.5em 0.5em;
+        }
+
+        chat-app /deep/ .channelItem.control {
+            background-color: #777;
+            color: white;
+        }
+
+        chat-app /deep/ .channelItem.own {
+            background-color: #f6fcff;
+            color: black;
+        }
+
+        chat-app /deep/ .channelItem.other {
+            background-color: #d2ecfb;
+            color: black;
+        }
+
+    </style>
+
+</head>
+<body fullbleed>
+
+<chat-app></chat-app>
+
+<script>
+
+    function onGwtChatLoaded() {
+
+        // Set the default server value of the chat-app element to the current host
+        var chatApp = document.querySelector("chat-app");
+        chatApp.server = "ws://" + window.location.host + "/v1/chat";
+
+        waitForPolymer(100, 50, initPolymer, function() {
+            window.alert("Timeout waiting for Polymer to load. Sorry.")
+        })
+    }
+
+    function initPolymer() {
+
+        Polymer("chat-login", {
+            connect: function () {
+                this.client.connect();
+            }
+        });
+
+        Polymer("chat-connection", {
+            getHostname: function (url) {
+                var parser = document.createElement('a');
+                parser.href = url;
+                return parser.hostname;
+            }
+        });
+
+        Polymer("chat-channel-list", {
+            selectJoinChannel: function (e, detail, sender) {
+                this.client.join(sender.templateInstance.model.channel.name);
+            },
+            joinChannel: function () {
+                this.client.join(this.channelName);
+                this.channelName = null;
+            },
+            switchChannel: function (e, detail, sender) {
+                this.client.currentChannel = sender.templateInstance.model.channel;
+                this.fire("channelSwitched");
+            },
+            partChannel: function (e, detail, sender) {
+                this.client.part(sender.templateInstance.model.channel.name);
+            }
+        });
+
+        Polymer("chat-channel-toolbar", {
+            toggleMembers: function (e) {
+                this.$.members.toggle();
+            },
+            partChannel: function () {
+                this.client.part(this.channel.name);
+            }
+        });
+
+        Polymer("chat-channel-content", {
+            attached: function () {
+                window.onresize = function (event) {
+                    this.scrollItemsList();
+                }.bind(this);
+            },
+            observe: {
+                "channel.items": "scrollItemsList"
+            },
+            scrollItemsList: function () {
+                this.async(function () {
+                    var itemsList = this.$.itemsList;
+                    itemsList.scrollTop = itemsList.scrollHeight;
+                }, null, 100);
+            },
+            sendOnEnter: function (ev) {
+                var code = ev.keyCode || ev.charCode;
+                var key = ev.keyIdentifier;
+                if (key === 'Enter' || code === 13) {
+                    this.sendText()
+                }
+            },
+            sendText: function () {
+                this.client.sendText(this.channel.name, this.text);
+                this.text = null;
+            }
+        });
+
+        Polymer("chat-channel-item", {
+            formatTimestamp: function (timestamp) {
+                // TODO: No support for long/unixtime, so what do we do with this fake java.util.Date?
+                return timestamp;
+            }
+        });
+
+        Polymer("chat-app", {
+            observe: {
+                "client.status": "statusChanged",
+                "client.currentChannel": "closeDrawer"
+            },
+            created: function () {
+                this.client = new chat.ChatClient(new chat.ChatEndpoint());
+
+                this.client.endpoint.register(
+                        chat.event.ChatDisconnected.NAME, this.closeDrawer.bind(this)
+                );
+            },
+            attached: function () {
+                this.client.server = this.server;
+                this.client.nick = this.nick;
+
+                this.$.channelList.addEventListener("channelSwitched", function (e) {
+                    this.closeDrawer();
+                }.bind(this));
+            },
+            detached: function () {
+                this.$.channelList.removeEventListener("channelSwitched");
+            },
+            closeDrawer: function () {
+                this.$.scaffold.closeDrawer();
+            },
+            statusChanged: function (oldValue, newValue) {
+                if (newValue && newValue.length > 0 && oldValue != newValue) {
+                    this.$.statusToast.show();
+                }
+            },
+            disconnect: function () {
+                this.client.disconnect();
+            }
+        });
+
+    }
+</script>
+
+<polymer-element name="chat-app" attributes="server nick">
+    <template>
+
+        <paper-toast id="statusToast" text="{{client.status}}" duration="3000"></paper-toast>
+
+        <core-scaffold id="scaffold">
+
+            <core-header-panel navigation flex mode="seamed">
+                <core-toolbar>Channels</core-toolbar>
+
+                <div class="padded">
+                    <chat-channel-list id="channelList" client="{{client}}"></chat-channel-list>
+
+                    <template if="{{client.sessionActive}}">
+                        <div layout horizontal class="padded">
+                            <paper-button flex raised on-click="{{disconnect}}">Disconnect</paper-button>
+                        </div>
+                    </template>
+                </div>
+            </core-header-panel>
+
+            <template if="{{!client.sessionActive}}">
+                <div tool>Chat</div>
+                <chat-login client="{{client}}"></chat-login>
+            </template>
+
+            <template if="{{client.sessionActive}}">
+
+                <template if="{{!client.currentChannel}}">
+                    <div tool>
+                        <chat-connection client="{{client}}"></chat-connection>
+                    </div>
+                    <div class="padded">
+                        Please join or select a channel in the left-hand side menu.
+                    </div>
+                </template>
+
+                <template if="{{client.currentChannel}}">
+                    <div tool flex wrap>
+                        <chat-channel-toolbar client="{{client}}" channel="{{client.currentChannel}}"/>
+                    </div>
+                    <div>
+                        <chat-channel-content client="{{client}}" channel="{{client.currentChannel}}"/>
+                    </div>
+                </template>
+            </template>
+
+        </core-scaffold>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-login" attributes="client">
+    <template>
+        <div class="padded" layout vertical center-justified>
+            <paper-input label="Server" value="{{client.server}}" disabled?="{{client.session}}"></paper-input>
+            <paper-input label="Nick" value="{{client.nick}}"></paper-input>
+            <paper-button on-click="{{connect}}" disabled?="{{!client.server || !client.nick}}">
+                {{!client.session ? 'Connect' : 'Change Nick'}}
+            </paper-button>
+        </div>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-channel-list" attributes="client">
+    <template>
+        <template if="{{!client.sessionActive}}">
+            Not connected.
+        </template>
+        <template if="{{client.sessionActive}}">
+
+            <template if="{{client.channels.length == 0}}">
+                No channels on this server, enter new channel name.
+            </template>
+
+            <div layout horizontal center>
+                <paper-input label="Channel"
+                             value="{{channelName}}"></paper-input>
+                <paper-button on-click="{{joinChannel}}"
+                              disabled?="{{!channelName}}">Join
+                </paper-button>
+            </div>
+
+            <core-menu>
+                <template repeat="{{channel in client.channels}}">
+                    <div layout horizontal center>
+
+                        <template if="{{!channel.active}}">
+                            <paper-item on-click="{{selectJoinChannel}}" flex>
+                                <core-icon icon="communication:messenger"></core-icon>
+                                {{channel.name}}
+                            </paper-item>
+                        </template>
+
+                        <template if="{{channel.active}}">
+                            <paper-item on-click="{{switchChannel}}" flex>
+                                <core-icon icon="communication:chat"></core-icon>
+                                {{channel.name}}
+                            </paper-item>
+                            <paper-button on-click="{{partChannel}}">
+                                <core-icon icon="close"></core-icon>
+                            </paper-button>
+                        </template>
+
+                    </div>
+                </template>
+            </core-menu>
+
+        </template>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-connection" attributes="client">
+    <template>
+        <div class="padded">
+            {{client.nick}}@{{client.server | getHostname}}
+        </div>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-channel-toolbar" attributes="client channel">
+    <template>
+        <div horizontal layout flex center>
+
+            <div flex class="padded">
+                {{channel.name}}
+            </div>
+
+            <div layout horizontal center>
+                <div>
+                    <paper-button on-click="{{toggleMembers}}">
+                        <core-icon icon="social:people"></core-icon>
+                        {{channel.members.length}}
+                    </paper-button>
+                    <paper-dialog id="members" heading="Members" transition="core-transition-center">
+                        <template repeat="{{m in channel.members}}">
+                            <core-item icon="social:person" label="{{m}}"></core-item>
+                        </template>
+                    </paper-dialog>
+                </div>
+                <div>
+                    <paper-icon-button icon="close" on-click="{{partChannel}}"></paper-icon-button>
+                </div>
+            </div>
+
+        </div>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-channel-content" attributes="client channel">
+    <template>
+        <div id="itemsList"
+             class="padded"
+             style="position:absolute; top:0; bottom: 4.5em; left:0; right:0; overflow:auto;">
+
+            <template repeat="{{item in channel.items}}">
+                <chat-channel-item item="{{item}}"></chat-channel-item>
+            </template>
+
+        </div>
+        <div style="position:absolute; height:4.5em; bottom:0; left:0; right:0; overflow:hidden;">
+            <div layout horizontal flex center class="padded">
+                <paper-input style="width:100%"
+                             label="Message"
+                             on-keypress="{{sendOnEnter}}"
+                             value="{{text}}"></paper-input>
+                <paper-fab icon="send" on-click="{{sendText}}" disabled?="{{!text}}"></paper-fab>
+            </div>
+        </div>
+    </template>
+</polymer-element>
+
+<polymer-element name="chat-channel-item" attributes="item">
+    <template>
+
+        <div layout horizontal center style="margin: 0.5em 0.5em 0 0.5em;" end-justified?="{{item.own}}">
+            <div>
+                <core-icon icon="{{item.control ? 'communication:import-export' : 'social:person'}}"></core-icon>
+            </div>
+            <div style="font-size: smaller;">
+                <template if="{{item.control}}">
+                    {{item.timestamp | formatTimestamp}}
+                </template>
+                <template if="{{!item.control}}">
+                    {{item.nick}}
+                </template>
+            </div>
+        </div>
+        <paper-shadow
+                class="padded channelItem {{ {control: item.control, own: item.own, other: !item.control && !item.own} | tokenList}}">
+            {{item.text}}
+        </paper-shadow>
+
+    </template>
+</polymer-element>
+
+</body>
+</html>

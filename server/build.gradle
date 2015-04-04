@@ -1,0 +1,43 @@
+dependencies {
+    compile project(":shared")
+
+    compile 'org.jboss.weld.se:weld-se:2.2.9.Final'
+    compile 'org.jboss.weld.servlet:weld-servlet-core:2.2.9.Final'
+
+    compile 'io.undertow:undertow-servlet:1.2.0.Beta9'
+    compile 'io.undertow:undertow-websockets-jsr:1.2.0.Beta9'
+
+    compile 'org.jboss.resteasy:resteasy-jaxrs:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-client:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-undertow:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-cdi:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-jackson2-provider:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-multipart-provider:3.0.10.Final'
+    compile 'org.jboss.resteasy:resteasy-cache-core:3.0.10.Final'
+    compile 'org.jboss.resteasy:async-http-servlet-3.0:3.0.10.Final'
+
+    /* TODO Outdated, one day maybe we can use this instead of bowser?
+    compile 'org.webjars:polymer:0.5.4'
+    */
+
+    testCompile "org.testng:testng:6.8.8"
+    testCompile 'org.glassfish.tyrus:tyrus-client:1.10'
+    testCompile "org.glassfish.tyrus:tyrus-container-grizzly-client:1.10"
+
+}
+
+// TODO: Weld scanner only discovers classes in the same directory as beans.xml but Gradle has build/classes/ and build/resources/
+/* TODO: This results in duplicate entries in JAR files, https://issues.gradle.org/browse/GRADLE-2213 */
+project.sourceSets.each {
+    it.output.resourcesDir = "$project.buildDir/classes/" + it.name
+}
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+test {
+    useTestNG() {
+        suites "src/test/AllTests.tng.xml"
+    }
+    systemProperty "WEBSERVER_WEBAPP_DIRECTORY", "${findProject(":client").projectDir}/src/main/webapp"
+}

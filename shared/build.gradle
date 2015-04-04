@@ -1,0 +1,7 @@
+dependencies {
+    compile 'com.google.gwt:gwt-user:2.8.0-SNAPSHOT'
+
+    compile "org.fusesource.restygwt:restygwt:2.0.2"
+    compile "org.jboss.resteasy:jaxrs-api:3.0.10.Final"
+
+}

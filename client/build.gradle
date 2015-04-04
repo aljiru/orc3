@@ -1,0 +1,55 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'de.richsource.gradle.plugins:gwt-gradle-plugin:0.6'
+    }
+}
+
+apply plugin: "war" // This is really for the IDE "project type" detection only
+apply plugin: "gwt-compiler"
+
+jar.enabled = false
+war.enabled = false
+
+dependencies {
+    compile project(":shared")
+    compile files(project(":shared").sourceSets.main.java.srcDirs)
+
+    compile("com.google.gwt.inject:gin:2.1.2") {
+        exclude module: 'asm'
+    }
+
+    compile "org.realityforge.gwt.websockets:gwt-websockets:1.1.2"
+}
+
+gwt {
+    gwtVersion = "2.8.0-SNAPSHOT"
+    sourceLevel = JavaVersion.VERSION_1_8
+    maxHeapSize = "1024M"
+
+    modules "name.christianbauer.orc3.Chat", "name.christianbauer.orc3.HelloWorld"
+
+    superDev {
+
+        // Compile on first access, not on startup of code server
+        noPrecompile = true
+        // Generate a minimal JS launcher in the webapp source folder (you might commit this or not, doesn't matter)
+        launcherDir = file("src/main/webapp/gwt")
+
+        // Careful, this binds to all interfaces on your machine!
+        bindAddress = "0.0.0.0"
+    }
+}
+tasks.withType(de.richsource.gradle.plugins.gwt.AbstractGwtActionTask) {
+
+    doFirst {
+        mkdir file("src/main/webapp/gwt")
+    }
+
+//    args "-logLevel", "TRACE"
+    args "-XjsInteropMode", "JS"
+    args "-noincremental" // TODO Yep, incremental compile is apparently broken right now in 2.8.0
+//    jvmArgs("-Dgwt.persistentunitcachedir=$project.buildDir/gwt/cache")
+}

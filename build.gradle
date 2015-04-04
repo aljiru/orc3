@@ -1,0 +1,111 @@
+allprojects {
+    project.version = "1.0-SNAPSHOT"
+
+    repositories {
+        mavenCentral()
+        maven {
+            url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+        maven {
+            url = "https://oss.sonatype.org/content/repositories/google-snapshots/"
+        }
+    }
+}
+
+subprojects {
+    apply plugin: "java"
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    jar.archiveName = "$rootProject.name-$project.name-${project.version}.jar"
+
+}
+
+/* TODO: We might need Dagger for cross-platform dependency injection on Android, GWT, and j2objc, but it's not ready
+subprojects.findAll({ ["shared", "server"].contains(it.name) }).each { p ->
+
+    p.dependencies {
+        compile 'com.google.dagger:dagger:2.0-SNAPSHOT'
+        compile 'com.google.dagger:dagger-compiler:2.0-SNAPSHOT'
+    }
+
+    def generatedSourceDirectory = "$p.buildDir/generated-source-apt"
+
+    p.sourceSets.main.java {
+        srcDir generatedSourceDirectory
+    }
+
+    p.tasks.withType(JavaCompile) {
+        doFirst {
+            delete(generatedSourceDirectory)
+            mkdir(generatedSourceDirectory)
+        }
+        it.options.compilerArgs += ['-s', generatedSourceDirectory]
+    }
+
+    // IntelliJ excludes all build directories by default, this includes generated sources...
+    p.apply plugin: "idea"
+    p.idea.module {
+        def buildDirContainsNonExcludedDirectories = false
+        p.buildDir.listFiles().each {
+            if (it.name.startsWith("generated-source")
+                    && it.listFiles() != null
+                    && it.listFiles().length > 0) {
+                buildDirContainsNonExcludedDirectories = true
+            } else {
+                excludeDirs += it
+            }
+        }
+        if (buildDirContainsNonExcludedDirectories)
+            excludeDirs -= p.buildDir
+    }
+}
+*/
+
+def deploymentDirectory = "$project.buildDir/deployment";
+task deployment {
+
+    dependsOn "server:build"
+    dependsOn "client:compileGwt"
+
+    doLast {
+
+        // Client
+        copy {
+            from("client/src/main/webapp") {
+                exclude "gwt";
+            }
+            into "$deploymentDirectory/webapp"
+        }
+        copy {
+            from("client/build/gwt/out") {
+                exclude "WEB-INF"
+            }
+            into "$deploymentDirectory/webapp/gwt"
+        }
+
+        // Server & Shared
+        def deployableProjects = [":server", ":shared"]
+
+        deployableProjects.each { deployable ->
+            def deployableProject = findProject(deployable)
+            copy {
+                into "$deploymentDirectory/lib/"
+                // The sub-projects JAR
+                from deployableProject.tasks.findByName("jar").outputs.files
+                // .. and transitive dependencies
+                deployableProject.configurations.compile.files.each { file ->
+                    // ... but skip a dependency if any deployables' JAR task created it
+                    if (!deployableProjects.any { d ->
+                        def jarTask = findProject(d).tasks.jar
+                        jarTask && jarTask.outputs.files.contains(file)
+                    }) from file
+                }
+            }
+        }
+
+        copy {
+            from "Dockerfile"
+            into "$deploymentDirectory"
+        }
+    }
+}

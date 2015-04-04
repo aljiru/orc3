@@ -1,0 +1,10 @@
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="Orc3 - All Tests">
+
+    <test name="Chat">
+        <packages>
+            <package name="name.christianbauer.orc3.test.chat"/>
+        </packages>
+    </test>
+
+</suite>
